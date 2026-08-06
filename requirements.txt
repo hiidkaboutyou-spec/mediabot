@@ -1,0 +1,4 @@
+python-telegram-bot==22.8
+python-dotenv==1.1.1
+yt-dlp==2026.06.09
+spotdl==4.5.2

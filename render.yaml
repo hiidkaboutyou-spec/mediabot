@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: universal-media-telegram-bot
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ALLOWED_USER_IDS
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "49"
+      - key: MAX_PLAYLIST_ITEMS
+        value: "30"
+      - key: SPOTIFY_AUDIO_FORMAT
+        value: mp3
+      - key: SPOTIFY_BITRATE
+        value: 320k
