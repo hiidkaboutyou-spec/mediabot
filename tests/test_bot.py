@@ -53,6 +53,56 @@ class MediaMetadataTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in formats[:6]], ["height:2160", "height:1440", "height:1080", "height:720", "height:480", "height:360"])
         self.assertEqual(formats[-1]["id"], "caption")
 
+    def test_playlist_keeps_playlist_metadata_and_uses_first_entry_formats(self) -> None:
+        playlist = {
+            "_type": "playlist",
+            "title": "sample list",
+            "entries": [{"title": "first", "formats": [{"height": 720, "vcodec": "avc1"}]}, None],
+        }
+        with patch("bot.yt_dlp.YoutubeDL") as ydl:
+            ydl.return_value.__enter__.return_value.extract_info.return_value = playlist
+            result, formats = bot.list_formats("https://example.com/playlist")
+        self.assertEqual(result["title"], "sample list")
+        self.assertEqual(result["_type"], "playlist")
+        self.assertEqual(formats[0]["id"], "height:720")
+
+
+class PlaylistDownloadTests(unittest.TestCase):
+    def test_downloads_and_returns_playlist_items_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as target:
+            entries = [{"title": "first"}, {"title": "second"}]
+            with patch("bot.yt_dlp.YoutubeDL") as ydl:
+                instance = ydl.return_value.__enter__.return_value
+
+                def extract(url, download):
+                    (Path(target) / "0002-second-id2.mp4").write_bytes(b"second")
+                    (Path(target) / "0001-first-id1.mp4").write_bytes(b"first")
+                    return {"_type": "playlist", "entries": entries}
+
+                instance.extract_info.side_effect = extract
+                with patch("bot.MAX_UPLOAD_MB", 1):
+                    results = bot.download_media_items("https://example.com/list", "best", target)
+                options = ydl.call_args.args[0]
+            self.assertFalse(options["noplaylist"])
+            self.assertEqual(options["playlistend"], bot.MAX_PLAYLIST_ITEMS)
+            self.assertEqual([path.name for path, _ in results], ["0001-first-id1.mp4", "0002-second-id2.mp4"])
+            self.assertEqual([info["title"] for _, info in results], ["first", "second"])
+
+    def test_playlist_items_above_upload_cap_are_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as target, patch("bot.MAX_UPLOAD_MB", 1):
+            with patch("bot.yt_dlp.YoutubeDL") as ydl:
+                instance = ydl.return_value.__enter__.return_value
+
+                def extract(url, download):
+                    (Path(target) / "0001-large-id1.mp4").write_bytes(b"x" * (1024 * 1024 + 1))
+                    (Path(target) / "0002-small-id2.mp4").write_bytes(b"x")
+                    return {"_type": "playlist", "entries": [{"id": "id1", "title": "large"}, {"id": "id2", "title": "small"}]}
+
+                instance.extract_info.side_effect = extract
+                results = bot.download_media_items("https://example.com/list", "best", target)
+            self.assertEqual([path.name for path, _ in results], ["0002-small-id2.mp4"])
+            self.assertEqual(results[0][1]["title"], "small")
+
     def test_duration_filter_rejects_over_limit(self) -> None:
         duration_filter = bot.ydl_base()["match_filter"]
         self.assertIsNone(duration_filter({"duration": 30}, False))

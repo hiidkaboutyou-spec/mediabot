@@ -1,13 +1,15 @@
 # Universal Media Downloader Bot
 
-A Persian-first Telegram bot for downloading media from many public websites with [yt-dlp](https://github.com/yt-dlp/yt-dlp), plus Spotify track/album/playlist matching through [spotDL](https://github.com/spotDL/spotify-downloader).
+A Persian-first Telegram bot called **دانلودچی (Downloadchi)** for downloading media from many public websites with [yt-dlp](https://github.com/yt-dlp/yt-dlp), plus Spotify track/album/playlist matching through [spotDL](https://github.com/spotDL/spotify-downloader).
 
 yt-dlp supports thousands of extractors, but website support can break as services change. Private, region-restricted, or login-required media may not work. Spotify audio is DRM-protected and is not downloaded from Spotify; spotDL matches audio from third-party providers and adds Spotify metadata. Use this bot only for content you are authorized to download.
 
 ## Features
 
 - Available video qualities, best quality, MP3 audio, and metadata captions
+- Full yt-dlp playlist downloads, sent as separate files in playlist order (up to `MAX_PLAYLIST_ITEMS`)
 - Spotify metadata lookup with a configurable per-link track cap
+- Telegram profile icon at [`assets/bot-avatar.png`](assets/bot-avatar.png), with ready-to-copy BotFather profile text in [`BRANDING.md`](BRANDING.md)
 - Configurable file size, media duration, and concurrent download limits
 - Optional Telegram user allowlist and checks against private/local URL hosts
 - Docker image and Render/Railway deployment manifests

@@ -12,7 +12,7 @@ services:
       - key: MAX_UPLOAD_MB
         value: "49"
       - key: MAX_PLAYLIST_ITEMS
-        value: "10"
+        value: "500"
       - key: MAX_DURATION_SECONDS
         value: "7200"
       - key: MAX_CONCURRENT_DOWNLOADS

@@ -33,7 +33,7 @@ load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ALLOWED_USER_IDS = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()}
 MAX_UPLOAD_MB = max(1, min(int(os.getenv("MAX_UPLOAD_MB", "49")), 49))
-MAX_PLAYLIST_ITEMS = max(1, min(int(os.getenv("MAX_PLAYLIST_ITEMS", "10")), 100))
+MAX_PLAYLIST_ITEMS = max(1, min(int(os.getenv("MAX_PLAYLIST_ITEMS", "500")), 5000))
 MAX_DURATION_SECONDS = max(60, int(os.getenv("MAX_DURATION_SECONDS", "7200")))
 MAX_CONCURRENT_DOWNLOADS = max(1, min(int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "2")), 8))
 SPOTIFY_AUDIO_FORMAT = os.getenv("SPOTIFY_AUDIO_FORMAT", "mp3").lower()
@@ -58,6 +58,8 @@ class Job:
     formats: list[dict[str, Any]]
     owner_id: int
     created_at: float
+    is_playlist: bool = False
+    item_count: int = 1
 
 
 JOBS: dict[str, Job] = {}
@@ -93,7 +95,7 @@ def ydl_base(download_dir: str | None = None) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
-        "noplaylist": True,
+        "noplaylist": False,
         "restrictfilenames": True,
         "socket_timeout": 30,
         "retries": 3,
@@ -105,9 +107,10 @@ def ydl_base(download_dir: str | None = None) -> dict[str, Any]:
             if info.get("duration") and info["duration"] > MAX_DURATION_SECONDS
             else None
         ),
+        "playlistend": MAX_PLAYLIST_ITEMS,
     }
     if download_dir:
-        opts["outtmpl"] = str(Path(download_dir) / "%(title).100s-%(id)s.%(ext)s")
+        opts["outtmpl"] = str(Path(download_dir) / "%(autonumber)04d-%(title).100s-%(id)s.%(ext)s")
     if COOKIES_FILE and Path(COOKIES_FILE).is_file():
         opts["cookiefile"] = COOKIES_FILE
     return opts
@@ -135,11 +138,13 @@ def list_formats(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if not info:
         raise RuntimeError("از این لینک رسانه‌ای پیدا نشد.")
     if info.get("entries"):
-        info = next((entry for entry in info["entries"] if entry), None)
-    if not info:
+        info = dict(info)
+        info["_sample_entry"] = next((entry for entry in info["entries"] if entry), None)
+    sample = info.get("_sample_entry") or info
+    if not sample:
         raise RuntimeError("از این لینک رسانه‌ای پیدا نشد.")
 
-    heights = sorted({int(f["height"]) for f in (info.get("formats") or []) if f.get("height") and f.get("vcodec") != "none"}, reverse=True)
+    heights = sorted({int(f["height"]) for f in (sample.get("formats") or []) if f.get("height") and f.get("vcodec") != "none"}, reverse=True)
     options: list[dict[str, Any]] = []
     for height in heights[:6]:
         options.append({"id": f"height:{height}", "label": f"حداکثر {height}p"})
@@ -157,8 +162,20 @@ def download_media(
     target: str,
     progress_hook: Any | None = None,
 ) -> tuple[Path, dict[str, Any]]:
+    files = download_media_items(url, fmt, target, progress_hook)
+    if not files:
+        raise RuntimeError("فایل خروجی ساخته نشد.")
+    return files[0]
+
+
+def download_media_items(
+    url: str,
+    fmt: str,
+    target: str,
+    progress_hook: Any | None = None,
+) -> list[tuple[Path, dict[str, Any]]]:
     opts = ydl_base(target)
-    opts.update({"noplaylist": True, "merge_output_format": "mp4"})
+    opts.update({"noplaylist": False, "merge_output_format": "mp4", "ignoreerrors": True})
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
     if fmt == "audio":
@@ -176,17 +193,31 @@ def download_media(
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        if info.get("entries"):
-            info = next((entry for entry in info["entries"] if entry), info)
+    entries = list(info.get("entries") or []) if info else []
+    entries = [entry for entry in entries if entry]
+    if not entries and info:
+        entries = [info]
 
     files = [p for p in Path(target).iterdir() if p.is_file() and not p.name.endswith((".part", ".ytdl"))]
     if not files:
         raise RuntimeError("فایل خروجی ساخته نشد.")
-    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    final = next((p for p in files if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".mov"}), files[0])
-    if final.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
-        raise RuntimeError(f"فایل از سقف {MAX_UPLOAD_MB} مگابایت تلگرام بزرگ‌تر شد؛ کیفیت پایین‌تر را انتخاب کن.")
-    return final, info
+    media_files = [p for p in files if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".mov"}]
+    media_files.sort(key=lambda path: (not bool(re.match(r"^\d{4}-", path.name)), path.name.lower()))
+    if not media_files:
+        media_files = files
+    entry_by_id = {str(entry.get("id")): entry for entry in entries if entry.get("id")}
+    result: list[tuple[Path, dict[str, Any]]] = []
+    for index, path in enumerate(media_files):
+        if path.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+            log.warning("Skipping oversized playlist item: %s", path.name)
+            continue
+        entry = next((value for entry_id, value in entry_by_id.items() if f"-{entry_id}." in path.name), None)
+        if entry is None:
+            entry = entries[index] if index < len(entries) else {}
+        result.append((path, entry))
+    if not result:
+        raise RuntimeError(f"همهٔ فایل‌ها از سقف {MAX_UPLOAD_MB} مگابایت تلگرام بزرگ‌تر بودند.")
+    return result
 
 
 def download_spotify(url: str, target: str) -> list[Path]:
@@ -207,7 +238,8 @@ def download_spotify(url: str, target: str) -> list[Path]:
         raise RuntimeError("اطلاعات آهنگ‌های Spotify قابل خواندن نیست.") from exc
     if not isinstance(songs, list):
         raise RuntimeError("قالب فهرست Spotify معتبر نیست.")
-    catalog.write_text(json.dumps(songs[:MAX_PLAYLIST_ITEMS], ensure_ascii=False), encoding="utf-8")
+    selected_songs = songs[:MAX_PLAYLIST_ITEMS]
+    catalog.write_text(json.dumps(selected_songs, ensure_ascii=False), encoding="utf-8")
 
     command = [
         "spotdl", "download", str(catalog),
@@ -222,7 +254,7 @@ def download_spotify(url: str, target: str) -> list[Path]:
         message = (result.stderr or result.stdout or "خطای spotDL").strip()
         raise RuntimeError(message[-1200:])
     files = sorted(Path(target).glob(f"*.{SPOTIFY_AUDIO_FORMAT}"), key=lambda path: path.name.lower())
-    return files[:MAX_PLAYLIST_ITEMS]
+    return files[:len(selected_songs)]
 
 
 def prune_jobs() -> None:
@@ -239,9 +271,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not allowed(update) or not update.message:
         return
     await update.message.reply_text(
-        "سلام! لینک عمومی ویدیو یا صوت را بفرست. بات از yt-dlp استفاده می‌کند و هزاران سایت را پوشش می‌دهد؛ "
+        "سلام! من دانلودچی‌ام 🤖 لینک عمومی ویدیو، صوت یا پلی‌لیست را بفرست. "
+        "پلی‌لیست‌ها به‌ترتیب دانلود و فایل‌ها جداگانه ارسال می‌شوند. بات از yt-dlp استفاده می‌کند و هزاران سایت را پوشش می‌دهد؛ "
         "کارکرد هر سایت به تغییرات همان سرویس وابسته است.\n\n"
-        "• کیفیت‌های موجود، بهترین کیفیت یا MP3\n"
+        "• کیفیت‌های موجود، بهترین کیفیت یا MP3\n• دانلود پلی‌لیست کامل تا سقف تنظیم‌شدهٔ سرور\n"
         "• کپشن و اطلاعات رسانه\n"
         "• لینک Spotify برای تطبیق آهنگ و دریافت نسخهٔ قابل‌دسترس از منابع پشتیبانی‌شده\n\n"
         "برای راهنما /help و برای شناسه /id را بفرست. فقط محتوایی را بگیر که حق دریافتش را داری."
@@ -307,7 +340,9 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             info, formats = await asyncio.to_thread(list_formats, url)
         job_id = uuid.uuid4().hex[:10]
         user_id = update.effective_user.id if update.effective_user else 0
-        JOBS[job_id] = Job(url=url, title=str(info.get("title") or "Media"), caption=make_caption(info), formats=formats, owner_id=user_id, created_at=time.time())
+        is_playlist = bool(info.get("entries")) or info.get("_type") in {"playlist", "multi_video"}
+        item_count = len([entry for entry in info.get("entries", []) if entry]) if is_playlist else 1
+        JOBS[job_id] = Job(url=url, title=str(info.get("title") or "Media"), caption=make_caption(info), formats=formats, owner_id=user_id, created_at=time.time(), is_playlist=is_playlist, item_count=item_count)
         prune_jobs()
         keyboard = [
             [InlineKeyboardButton(item["label"], callback_data=f"cap|{job_id}")] if item["id"] == "caption"
@@ -315,8 +350,9 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             for item in formats
         ]
         preview = html.escape(make_caption(info)[:700])
+        playlist_hint = f"\n📚 پلی‌لیست · {item_count or 'تعداد نامشخص'} آیتم (سقف {MAX_PLAYLIST_ITEMS})" if is_playlist else ""
         await status.edit_text(
-            f"<b>{html.escape(str(info.get('title') or 'Media'))}</b>\n\n<blockquote>{preview}</blockquote>\n\nکیفیت را انتخاب کن:",
+            f"<b>{html.escape(str(info.get('title') or 'Media'))}</b>{playlist_hint}\n\n<blockquote>{preview}</blockquote>\n\nکیفیت را انتخاب کن:",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard),
             disable_web_page_preview=True,
@@ -392,13 +428,19 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             loop.call_soon_threadsafe(schedule_edit)
 
         async with DOWNLOADS:
-            path, info = await asyncio.to_thread(download_media, job.url, fmt, tmp, report_progress)
-        caption = make_caption(info)
-        with path.open("rb") as media:
-            if path.suffix.lower() in {".mp3", ".m4a"}:
-                await query.message.reply_audio(audio=media, caption=caption, read_timeout=180, write_timeout=180)
-            else:
-                await query.message.reply_document(document=media, caption=caption, filename=path.name, read_timeout=180, write_timeout=180)
+            results = await asyncio.to_thread(download_media_items, job.url, fmt, tmp, report_progress)
+        total = len(results)
+        for index, (path, info) in enumerate(results, 1):
+            if total > 1:
+                await query.edit_message_text(f"در حال ارسال آیتم {index} از {total}…")
+            caption = make_caption(info)
+            if total > 1:
+                caption = f"{index}/{total} · {caption}"[:1024]
+            with path.open("rb") as media:
+                if path.suffix.lower() in {".mp3", ".m4a"}:
+                    await query.message.reply_audio(audio=media, caption=caption, title=path.stem[:64], read_timeout=180, write_timeout=180)
+                else:
+                    await query.message.reply_document(document=media, caption=caption, filename=path.name, read_timeout=180, write_timeout=180)
         JOBS.pop(job_id, None)
         await query.delete_message()
     except Exception as exc:
