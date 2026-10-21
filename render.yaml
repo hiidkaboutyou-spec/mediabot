@@ -12,8 +12,12 @@ services:
       - key: MAX_UPLOAD_MB
         value: "49"
       - key: MAX_PLAYLIST_ITEMS
-        value: "30"
+        value: "10"
+      - key: MAX_DURATION_SECONDS
+        value: "7200"
+      - key: MAX_CONCURRENT_DOWNLOADS
+        value: "2"
       - key: SPOTIFY_AUDIO_FORMAT
         value: mp3
       - key: SPOTIFY_BITRATE
-        value: 320k
+        value: 192k

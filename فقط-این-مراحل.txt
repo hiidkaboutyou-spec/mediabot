@@ -1,9 +1,10 @@
-1) همه فایل‌های همین پوشه را مستقیم داخل صفحه اصلی یک Repository خصوصی GitHub آپلود کن.
-2) در Koyeb با GitHub وارد شو و Create Web Service را بزن.
-3) Repository را انتخاب کن و Builder را Dockerfile بگذار.
-4) Environment Variable بساز: BOT_TOKEN = توکن BotFather
-5) پورت HTTP را 8000 بگذار و Deploy را بزن.
-6) وقتی Healthy شد، در تلگرام /start و سپس /id را بفرست.
-7) در Koyeb متغیر ALLOWED_USER_IDS را برابر آیدی عددی خودت بگذار و Redeploy کن.
+راه‌اندازی سریع بات دانلودر
 
-هیچ فایل مخفی، Terminal، Homebrew یا کدنویسی روی Mac لازم نیست.
+۱) فایل README_FA.md را باز کن و مراحل استقرار Render یا Railway را دنبال کن.
+۲) توکن BotFather را فقط در Environment Variables سرویس با نام BOT_TOKEN وارد کن؛ آن را داخل GitHub آپلود نکن.
+۳) بعد از اولین Deploy، در تلگرام /id را بفرست و شناسه‌ات را در ALLOWED_USER_IDS سرویس قرار بده.
+۴) سرویس را Redeploy کن و با /start شروع کن.
+
+اگر روی کامپیوتر خودت اجرا می‌کنی: .env.example را به .env کپی کن، BOT_TOKEN را وارد کن و docker compose up --build -d را اجرا کن.
+
+هنگام خالی بودن ALLOWED_USER_IDS بات برای همه قابل استفاده است. برای استفادهٔ شخصی شناسهٔ خودت را تنظیم کن.
