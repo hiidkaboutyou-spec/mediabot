@@ -149,6 +149,43 @@ class TelegramAuthorizationTests(unittest.IsolatedAsyncioTestCase):
         query.edit_message_text.assert_not_awaited()
         bot.JOBS.clear()
 
+    async def test_playlist_callback_sends_every_file_in_order(self) -> None:
+        bot.JOBS.clear()
+        with tempfile.TemporaryDirectory() as target:
+            first = Path(target) / "0001-first.mp4"
+            second = Path(target) / "0002-second.mp4"
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            bot.JOBS["playlist1"] = bot.Job(
+                "https://example.com/playlist", "playlist", "", [{"id": "best"}], 100,
+                time.time(), is_playlist=True, item_count=2,
+            )
+            message = SimpleNamespace(
+                reply_text=AsyncMock(),
+                reply_document=AsyncMock(),
+                reply_audio=AsyncMock(),
+            )
+            query = SimpleNamespace(
+                data="dl|playlist1|best",
+                answer=AsyncMock(),
+                message=message,
+                edit_message_text=AsyncMock(),
+                delete_message=AsyncMock(),
+            )
+            update = SimpleNamespace(callback_query=query, effective_user=SimpleNamespace(id=100))
+            results = [(first, {"title": "first"}), (second, {"title": "second"})]
+
+            with patch("bot.download_media_items", return_value=results):
+                await bot.callback(update, None)
+
+            self.assertEqual(message.reply_document.await_count, 2)
+            self.assertEqual(
+                [call.kwargs["filename"] for call in message.reply_document.await_args_list],
+                [first.name, second.name],
+            )
+            query.delete_message.assert_awaited_once()
+        bot.JOBS.clear()
+
 
 class SpotifyCapTests(unittest.TestCase):
     def test_track_cap_is_applied_before_download(self) -> None:

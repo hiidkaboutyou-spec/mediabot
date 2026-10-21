@@ -25,4 +25,4 @@ See [README_FA.md](README_FA.md) for the full Persian setup guide and configurat
 
 ## Tests
 
-Run the offline unit suite with `python -m unittest discover -s tests -v`. To also run the opt-in live probe and download against a public sample MP4, run `RUN_LIVE_MEDIA_TESTS=1 python -m unittest tests.test_live_media -v`. GitHub Actions runs the unit suite and builds the Docker image on pushes and pull requests.
+Run the offline unit suite with `python -m unittest discover -s tests -v`. To also download a public sample MP4 and a two-item PeerTube playlist end to end, run `RUN_LIVE_MEDIA_TESTS=1 python -m unittest tests.test_live_media -v`. GitHub Actions runs the unit suite and builds the Docker image on pushes and pull requests.
