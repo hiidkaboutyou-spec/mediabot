@@ -20,3 +20,7 @@ yt-dlp supports thousands of extractors, but website support can break as servic
 4. Open the bot and send `/start`. Send `/id` to see your numeric Telegram ID.
 
 See [README_FA.md](README_FA.md) for the full Persian setup guide and configuration table.
+
+## Tests
+
+Run the offline unit suite with `python -m unittest discover -s tests -v`. To also run the opt-in live probe and download against a public sample MP4, run `RUN_LIVE_MEDIA_TESTS=1 python -m unittest tests.test_live_media -v`. GitHub Actions runs the unit suite and builds the Docker image on pushes and pull requests.

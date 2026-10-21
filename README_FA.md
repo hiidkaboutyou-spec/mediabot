@@ -72,3 +72,5 @@ python bot.py
 ## توسعه
 
 کد اصلی در `bot.py` است. گزارش مشکلات extractorهای سایت‌ها را در [yt-dlp](https://github.com/yt-dlp/yt-dlp/issues) و خطاهای تطبیق آهنگ را در [spotDL](https://github.com/spotDL/spotify-downloader/issues) ثبت کنید.
+
+برای اجرای تست‌های آفلاین: `python -m unittest discover -s tests -v`. تست زندهٔ استخراج و دانلود نمونهٔ عمومی را با `RUN_LIVE_MEDIA_TESTS=1 python -m unittest tests.test_live_media -v` اجرا کنید.

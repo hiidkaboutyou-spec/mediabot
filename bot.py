@@ -80,7 +80,8 @@ def validate_url(url: str) -> str:
         addresses = {ipaddress.ip_address(host)}
     except ValueError:
         try:
-            addresses = {ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
+            port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+            addresses = {ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
         except (OSError, ValueError):
             raise ValueError("دامنهٔ لینک پیدا نشد یا در دسترس نیست.") from None
     if not addresses or any(not address.is_global for address in addresses):
@@ -97,6 +98,7 @@ def ydl_base(download_dir: str | None = None) -> dict[str, Any]:
         "socket_timeout": 30,
         "retries": 3,
         "fragment_retries": 3,
+        "noprogress": True,
         "max_filesize": MAX_UPLOAD_MB * 1024 * 1024,
         "match_filter": lambda info, incomplete: (
             f"ویدیو از محدودیت {MAX_DURATION_SECONDS // 60} دقیقه طولانی‌تر است"
@@ -149,9 +151,16 @@ def list_formats(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return info, options
 
 
-def download_media(url: str, fmt: str, target: str) -> tuple[Path, dict[str, Any]]:
+def download_media(
+    url: str,
+    fmt: str,
+    target: str,
+    progress_hook: Any | None = None,
+) -> tuple[Path, dict[str, Any]]:
     opts = ydl_base(target)
     opts.update({"noplaylist": True, "merge_output_format": "mp4"})
+    if progress_hook:
+        opts["progress_hooks"] = [progress_hook]
     if fmt == "audio":
         opts.update({
             "format": "bestaudio/best",
@@ -221,7 +230,7 @@ def prune_jobs() -> None:
     for key, job in list(JOBS.items()):
         if now - job.created_at > JOB_TTL_SECONDS:
             JOBS.pop(key, None)
-    while len(JOBS) >= MAX_JOBS:
+    while len(JOBS) > MAX_JOBS:
         oldest = min(JOBS, key=lambda key: JOBS[key].created_at)
         JOBS.pop(oldest, None)
 
@@ -265,7 +274,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     url = match.group(0).rstrip(".,);]")
     status = await update.message.reply_text("دارم لینک را بررسی می‌کنم…")
     try:
-        validate_url(url)
+        await asyncio.to_thread(validate_url, url)
     except ValueError as exc:
         await status.edit_text(str(exc))
         return
@@ -296,10 +305,10 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     try:
         async with DOWNLOADS:
             info, formats = await asyncio.to_thread(list_formats, url)
-        prune_jobs()
         job_id = uuid.uuid4().hex[:10]
         user_id = update.effective_user.id if update.effective_user else 0
         JOBS[job_id] = Job(url=url, title=str(info.get("title") or "Media"), caption=make_caption(info), formats=formats, owner_id=user_id, created_at=time.time())
+        prune_jobs()
         keyboard = [
             [InlineKeyboardButton(item["label"], callback_data=f"cap|{job_id}")] if item["id"] == "caption"
             else [InlineKeyboardButton(item["label"], callback_data=f"dl|{job_id}|{item['id']}")]
@@ -349,8 +358,41 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.edit_message_text("دانلود شروع شد…")
     tmp = tempfile.mkdtemp(prefix="media_")
     try:
+        loop = asyncio.get_running_loop()
+        last_progress_update = [0.0]
+
+        def report_progress(data: dict[str, Any]) -> None:
+            if data.get("status") != "downloading":
+                return
+            now = time.monotonic()
+            if now - last_progress_update[0] < 5:
+                return
+            last_progress_update[0] = now
+            downloaded = int(data.get("downloaded_bytes") or 0)
+            total = int(data.get("total_bytes") or data.get("total_bytes_estimate") or 0)
+            downloaded_mb = downloaded / 1024 / 1024
+            if total:
+                percent = min(100, int(downloaded * 100 / total))
+                message = f"در حال دانلود… {percent}% · {downloaded_mb:.1f}/{total / 1024 / 1024:.1f} مگابایت"
+            else:
+                message = f"در حال دانلود… {downloaded_mb:.1f} مگابایت دریافت شده"
+
+            def schedule_edit() -> None:
+                task = asyncio.create_task(query.edit_message_text(message))
+
+                def ignore_edit_error(completed: asyncio.Task[Any]) -> None:
+                    if not completed.cancelled():
+                        try:
+                            completed.result()
+                        except Exception:
+                            pass
+
+                task.add_done_callback(ignore_edit_error)
+
+            loop.call_soon_threadsafe(schedule_edit)
+
         async with DOWNLOADS:
-            path, info = await asyncio.to_thread(download_media, job.url, fmt, tmp)
+            path, info = await asyncio.to_thread(download_media, job.url, fmt, tmp, report_progress)
         caption = make_caption(info)
         with path.open("rb") as media:
             if path.suffix.lower() in {".mp3", ".m4a"}:
