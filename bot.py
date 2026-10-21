@@ -271,13 +271,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not allowed(update) or not update.message:
         return
     await update.message.reply_text(
-        "سلام! من دانلودچی‌ام 🤖 لینک عمومی ویدیو، صوت یا پلی‌لیست را بفرست. "
-        "پلی‌لیست‌ها به‌ترتیب دانلود و فایل‌ها جداگانه ارسال می‌شوند. بات از yt-dlp استفاده می‌کند و هزاران سایت را پوشش می‌دهد؛ "
-        "کارکرد هر سایت به تغییرات همان سرویس وابسته است.\n\n"
-        "• کیفیت‌های موجود، بهترین کیفیت یا MP3\n• دانلود پلی‌لیست کامل تا سقف تنظیم‌شدهٔ سرور\n"
-        "• کپشن و اطلاعات رسانه\n"
-        "• لینک Spotify برای تطبیق آهنگ و دریافت نسخهٔ قابل‌دسترس از منابع پشتیبانی‌شده\n\n"
-        "برای راهنما /help و برای شناسه /id را بفرست. فقط محتوایی را بگیر که حق دریافتش را داری."
+        "Hi! I'm Downloaderchi 🤖 I can download public videos, audio, and playlists and send the files here.\n\n"
+        "How to use me:\n"
+        "1. Send a public media or playlist link.\n"
+        "2. Choose a video quality, best quality, or MP3 when available.\n"
+        "3. I’ll download the media and send it in this chat. Playlist items are sent separately, in order.\n\n"
+        "I use yt-dlp, which supports many websites, but support can change when a site changes. Private, login-required, "
+        "region-restricted, or very large media may not work. Spotify links use spotDL to find matching audio from supported "
+        "third-party sources; Spotify’s protected audio itself is not downloaded.\n\n"
+        "Send /help for details or /id to see your Telegram ID. Please only download content you have permission to use."
     )
 
 
@@ -285,10 +287,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not allowed(update) or not update.message:
         return
     await update.message.reply_text(
-        "لینک یک رسانهٔ عمومی را همین‌جا بفرست. لینک‌های YouTube، Instagram، TikTok، X، Facebook، "
-        "Reddit، Vimeo، SoundCloud و سایت‌های دیگر را به شرط پشتیبانی yt-dlp امتحان می‌کنم.\n\n"
-        "محدودیت‌ها: لینک خصوصی/نیازمند ورود ممکن است کار نکند؛ برای بعضی سایت‌ها تغییرات اخیر یا محدودیت منطقه‌ای مشکل‌ساز است؛ "
-        "محدودیت حجم و زمان در تنظیمات سرور اعمال می‌شود. لینک Spotify فایل اصلی DRM را نمی‌دهد و spotDL آهنگ مشابه را از منابع دیگر پیدا می‌کند."
+        "Send a public video, audio, or playlist link in this chat, then choose one of the available quality options. "
+        "Playlist items are downloaded in order and sent as separate files.\n\n"
+        "The bot uses yt-dlp and may support YouTube, Instagram, TikTok, X, Facebook, Reddit, Vimeo, SoundCloud, and many "
+        "other sites. Site support can change at any time. Private or login-required links, region restrictions, and server "
+        "file-size or duration limits can prevent a download.\n\n"
+        "Spotify links are handled by spotDL, which looks for matching audio from supported third-party sources; it does "
+        "not download Spotify's protected audio stream. Use /id to see your Telegram ID. Please only download content you "
+        "have permission to use."
     )
 
 

@@ -187,6 +187,38 @@ class TelegramAuthorizationTests(unittest.IsolatedAsyncioTestCase):
         bot.JOBS.clear()
 
 
+class WelcomeMessageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_start_explains_bot_in_english(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(
+            message=message,
+            effective_user=SimpleNamespace(id=100),
+        )
+
+        await bot.start(update, None)
+
+        message.reply_text.assert_awaited_once()
+        welcome = message.reply_text.await_args.args[0]
+        for detail in ("public", "playlist", "quality", "MP3", "Spotify", "/help", "/id"):
+            self.assertIn(detail, welcome)
+        self.assertNotIn("سلام", welcome)
+
+    async def test_help_explains_usage_and_limitations_in_english(self) -> None:
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(
+            message=message,
+            effective_user=SimpleNamespace(id=100),
+        )
+
+        await bot.help_command(update, None)
+
+        message.reply_text.assert_awaited_once()
+        help_text = message.reply_text.await_args.args[0]
+        for detail in ("public", "playlist", "quality", "private", "spotify", "/id"):
+            self.assertIn(detail, help_text.lower())
+        self.assertNotIn("لینک", help_text)
+
+
 class SpotifyCapTests(unittest.TestCase):
     def test_track_cap_is_applied_before_download(self) -> None:
         with tempfile.TemporaryDirectory() as target, patch("bot.MAX_PLAYLIST_ITEMS", 2):
